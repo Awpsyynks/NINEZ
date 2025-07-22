@@ -1,0 +1,87 @@
+{
+  "prefix": "!",
+  "embed_color": "0x3498db",
+  "channels": {
+    "welcome": null,
+    "role_selection": null,
+    "logs": null,
+    "tickets_category": null
+  },
+  "roles": {
+    "muted": null,
+    "selectable_roles": {
+      "✅": {
+        "name": "Membre Vérifié",
+        "role_id": null
+      },
+      "🎮": {
+        "name": "Gamer",
+        "role_id": null
+      },
+      "🎨": {
+        "name": "Artiste",
+        "role_id": null
+      },
+      "📚": {
+        "name": "Étudiant",
+        "role_id": null
+      },
+      "💻": {
+        "name": "Développeur",
+        "role_id": null
+      },
+      "🎵": {
+        "name": "Musicien",
+        "role_id": null
+      }
+    }
+  },
+  "messages": {
+    "welcome_title": "🎉 Bienvenue sur le serveur !",
+    "welcome_description": "Salut {user} ! Bienvenue sur notre serveur communautaire francophone !\n\n📋 **Étapes à suivre :**\n1. Lis les règles dans <#règles>\n2. Choisis tes rôles dans <#choix-rôles>\n3. Présente-toi dans <#présentations>\n4. Amuse-toi bien ! 🎊",
+    "role_selection_title": "🎭 Sélection de rôles",
+    "role_selection_description": "Clique sur les réactions ci-dessous pour obtenir les rôles correspondants !\n\n✅ - Membre Vérifié\n🎮 - Gamer\n🎨 - Artiste\n📚 - Étudiant\n💻 - Développeur\n🎵 - Musicien"
+  },
+  "moderation": {
+    "max_warnings": 3,
+    "mute_duration": 3600
+  },
+  "fun": {
+    "jokes": [
+      "Pourquoi les plongeurs plongent-ils toujours en arrière et jamais en avant ? Parce que sinon, ils tombent dans le bateau !",
+      "Que dit un escargot quand il croise une limace ? 'Regarde, un nudiste !'",
+      "Comment appelle-t-on un chat tombé dans un pot de peinture le jour de Noël ? Un chat-mallow !",
+      "Qu'est-ce qui est jaune et qui attend ? Jonathan !",
+      "Que dit un informaticien quand il se noie ? F1 ! F1 !"
+    ],
+    "quotes": [
+      "La vie, c'est comme une bicyclette, il faut avancer pour ne pas perdre l'équilibre. - Albert Einstein",
+      "Le succès, c'est d'aller d'échec en échec sans perdre son enthousiasme. - Winston Churchill",
+      "Il n'y a que deux façons de vivre sa vie : l'une en faisant comme si rien n'était un miracle, l'autre en faisant comme si tout était un miracle. - Albert Einstein",
+      "Soyez vous-même ; tous les autres sont déjà pris. - Oscar Wilde",
+      "L'imagination est plus importante que la connaissance. - Albert Einstein"
+    ],
+    "trivia": [
+      {
+        "question": "Quelle est la capitale de l'Australie ?",
+        "answer": "Canberra"
+      },
+      {
+        "question": "Combien d'os a un requin ?",
+        "answer": "Zéro (ils ont du cartilage)"
+      },
+      {
+        "question": "Quel est le plus grand océan du monde ?",
+        "answer": "L'océan Pacifique"
+      },
+      {
+        "question": "En quelle année a eu lieu la chute du mur de Berlin ?",
+        "answer": "1989"
+      },
+      {
+        "question": "Quel est l'élément chimique dont le symbole est 'Au' ?",
+        "answer": "L'or"
+      }
+    ]
+  }
+}
