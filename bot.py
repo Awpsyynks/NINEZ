@@ -56,7 +56,10 @@ class CommunityBot(commands.Bot):
             'cogs.moderation',
             'cogs.tickets',
             'cogs.utilities',
-            'cogs.fun'
+            'cogs.fun',
+            'cogs.levels',
+            'cogs.games',
+            'cogs.customization'
         ]
         
         for cog in cogs:

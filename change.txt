@@ -1,0 +1,61 @@
+add utilisateur ne marche pas pour ajouter un membres dans un ticket en mode il faudrait que ca lui donne juste acces a ce ticket la 
+!welcome_message "message"
+
+!warn @utilisateur raison      - Avertit un membre
+en mode quand il est a 3 warn il prend un ban ducoup il faudrait que le compteur se remet a 0 si jamais il revient sur le serveur 
+
+!warnings @utilisateur         - Voir les avertissements ne marche pas 
+
+
+
+# Progression des membres
+!rank [@user]                 - Voir son niveau
+!leaderboard                  - Top des niveaux
+!setxp @user [amount]         - Définir XP (admin)
+!rewards                      - Récompenses par niveau
+
+# Protection du serveur
+!automod [on/off]             - Modération automatique
+!antiraid [on/off]            - Protection anti-raid
+!antispam [on/off]            - Anti-spam
+!whitelist @user              - Liste blanche
+!lockdown                     - Verrouille le serveur
+!backup                       - Sauvegarde du serveur
+
+
+# Analytics du serveur
+!stats                        - Stats du serveur
+!activity                     - Activité des membres
+!channels                     - Stats des canaux
+!growth                       - Croissance du serveur
+
+# Customisation
+!color #hex                   - Couleur des embeds
+!prefix [nouveau]             - Changer le préfixe
+!language [fr/en]             - Changer la langue
+!timezone [zone]              - Fuseau horaire
+
+
+# Alertes et rappels
+!remind [temps] [message]     - Rappel personnel
+!announce [message]           - Annonce serveur
+!birthday [date]              - Anniversaires
+!events                       - Événements programmés
+
+# Jeux interactifs
+!rps [pierre/papier/ciseaux]  - Pierre-papier-ciseaux
+!guess                        - Devine le nombre
+!trivia                       - Questions culture générale
+!hangman                      - Jeu du pendu
+!blackjack                    - Jeu de cartes
+!slots                        - Machine à sous
+!coinflip [mise]              - Pari pile ou face
+
+# Commandes musique
+!play [url/recherche]         - Joue de la musique
+!pause                        - Met en pause
+!resume                       - Reprend la lecture
+!skip                         - Passe à la suivante
+!queue                        - Affiche la file d'attente
+!volume [0-100]               - Ajuste le volume
+!loop                         - Active/désactive la répétition
