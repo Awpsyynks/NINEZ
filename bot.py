@@ -59,7 +59,8 @@ class CommunityBot(commands.Bot):
             'cogs.fun',
             'cogs.levels',
             'cogs.games',
-            'cogs.customization'
+            'cogs.customization',
+            'cogs.onboarding'
         ]
         
         for cog in cogs:
