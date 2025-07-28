@@ -12,47 +12,62 @@ class Welcome(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        """Envoie un message de bienvenue quand un membre rejoint"""
+        """Envoie un message de bienvenue et attribue le rôle Non Vérifié"""
         try:
+            # Attribution automatique du rôle "Non Vérifié"
+            unverified_role = discord.utils.get(member.guild.roles, name="Non Vérifié")
+            if unverified_role:
+                await member.add_roles(unverified_role, reason="Nouveau membre - En attente de vérification")
+                logger.info(f"Rôle 'Non Vérifié' attribué à {member.name}")
+
             # Récupération du canal de bienvenue depuis la config
             welcome_channel_id = self.bot.config['channels']['welcome']
-            
+
             if not welcome_channel_id:
                 logger.warning("Canal de bienvenue non configuré")
                 return
-            
+
             welcome_channel = self.bot.get_channel(welcome_channel_id)
             if not welcome_channel:
                 logger.error(f"Canal de bienvenue {welcome_channel_id} introuvable")
                 return
-            
-            # Création de l'embed de bienvenue
+
+            # Création de l'embed de bienvenue amélioré
             embed = discord.Embed(
                 title=self.bot.config['messages']['welcome_title'],
                 description=self.bot.config['messages']['welcome_description'].format(user=member.mention),
                 color=int(self.bot.config['embed_color'], 16)
             )
-            
+
             # Ajout de l'avatar du membre
             embed.set_thumbnail(url=member.display_avatar.url)
-            
+
             # Ajout d'informations sur le serveur
             embed.add_field(
                 name="📊 Informations du serveur",
                 value=f"Tu es le **{member.guild.member_count}ème** membre !",
                 inline=False
             )
-            
+
+            # Instructions pour l'onboarding
+            rules_channel = discord.utils.get(member.guild.channels, name="règles")
+            if rules_channel:
+                embed.add_field(
+                    name="🎯 Prochaine étape",
+                    value=f"Va dans {rules_channel.mention} pour accepter les règles et accéder au serveur !",
+                    inline=False
+                )
+
             # Ajout du footer
             embed.set_footer(
                 text=f"Membre depuis",
                 icon_url=member.guild.icon.url if member.guild.icon else None
             )
             embed.timestamp = member.joined_at
-            
+
             await welcome_channel.send(embed=embed)
             logger.info(f"Message de bienvenue envoyé pour {member.name}")
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi du message de bienvenue: {e}")
     

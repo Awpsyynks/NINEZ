@@ -83,5 +83,22 @@
         "answer": "L'or"
       }
     ]
+  },
+  "super_bot": {
+    "version": "2.0.0",
+    "name": "Super-Bot Discord Ultime",
+    "description": "Le bot Discord le plus complet jamais créé",
+    "features": [
+      "Anti-raid avancé",
+      "Automodération intelligente",
+      "Économie complète",
+      "Musique avancée",
+      "Logs et audit",
+      "Giveaways et événements",
+      "Suggestions et feedback"
+    ],
+    "author": "Augment Agent",
+    "support_server": null,
+    "documentation": null
   }
 }
