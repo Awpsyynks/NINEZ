@@ -44,6 +44,23 @@ class CommunityBot(commands.Bot):
         # Variables pour stocker les données persistantes
         self.warnings = {}  # {user_id: count}
         self.muted_users = set()
+
+        # Variables pour l'anti-raid et l'automod
+        self.raid_detection = {
+            'joins': [],  # Liste des joins récents
+            'messages': {},  # Messages par utilisateur
+            'raid_mode': False,
+            'quarantine_role': None
+        }
+
+        # Variables pour l'économie
+        self.economy_data = {}
+
+        # Variables pour les giveaways
+        self.active_giveaways = {}
+
+        # Variables pour les suggestions
+        self.suggestions_data = {}
         
     async def setup_hook(self):
         """Appelé quand le bot démarre"""
@@ -60,7 +77,14 @@ class CommunityBot(commands.Bot):
             'cogs.levels',
             'cogs.games',
             'cogs.customization',
-            'cogs.onboarding'
+            'cogs.onboarding',
+            'cogs.antiraid',
+            'cogs.automod',
+            'cogs.economy',
+            'cogs.music',
+            'cogs.logs',
+            'cogs.giveaways',
+            'cogs.suggestions'
         ]
         
         for cog in cogs:
