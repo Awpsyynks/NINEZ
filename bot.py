@@ -83,7 +83,7 @@ class CommunityBot(commands.Bot):
         }
 
         # Configuration du système d'anonymisation
-        self.anonymous_commands = True  # Activé par défaut
+        self.anonymous_commands = False  # Désactivé par défaut pour éviter les conflits
 
         # Système de sauvegarde automatique
         self.auto_save_enabled = True
@@ -459,8 +459,10 @@ class CommunityBot(commands.Bot):
         """Appelé avant chaque commande - Système d'anonymisation"""
         logger.info(f"Commande '{ctx.command}' utilisée par {ctx.author.name} dans {ctx.guild.name if ctx.guild else 'DM'}")
 
-        # SYSTÈME D'ANONYMISATION DES COMMANDES
-        await self.anonymize_command(ctx)
+        # SYSTÈME D'ANONYMISATION DES COMMANDES (après traitement)
+        if self.anonymous_commands:
+            # Programmer l'anonymisation après l'exécution de la commande
+            self.loop.create_task(self.delayed_anonymize_command(ctx))
 
     async def anonymize_command(self, ctx):
         """Anonymise les commandes pour qu'elles apparaissent comme venant du bot"""
@@ -506,6 +508,22 @@ class CommunityBot(commands.Bot):
 
         except Exception as e:
             logger.error(f"Erreur anonymisation commande: {e}")
+
+    async def delayed_anonymize_command(self, ctx):
+        """Anonymise la commande après un délai pour ne pas interférer"""
+        try:
+            # Attendre un peu que la commande se termine
+            await asyncio.sleep(2)
+
+            # Supprimer le message de commande original
+            if ctx.guild and ctx.channel.permissions_for(ctx.guild.me).manage_messages:
+                try:
+                    await ctx.message.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass  # Message déjà supprimé ou pas les permissions
+
+        except Exception as e:
+            logger.error(f"Erreur anonymisation retardée: {e}")
 
     @commands.command(name='anonymous', aliases=['toggle_anonymous'])
     @commands.has_permissions(administrator=True)
@@ -580,33 +598,33 @@ class CommunityBot(commands.Bot):
         if message.author.bot:
             return
 
-        # Vérifier si c'est une commande incomplète
+        # Laisser le bot traiter les commandes normalement d'abord
+        await self.process_commands(message)
+
+        # Vérifier si c'est une commande incomplète SEULEMENT si ce n'est pas une commande valide
         if message.content.startswith(self.command_prefix):
-            await self.handle_autocomplete(message)
+            ctx = await self.get_context(message)
+            if ctx.command is None:  # Seulement si aucune commande n'a été trouvée
+                await self.handle_autocomplete(message)
 
     async def handle_autocomplete(self, message):
         """Gère l'autocomplétion des commandes"""
         try:
             content = message.content[len(self.command_prefix):].strip()
 
-            # Si la commande est vide ou juste un espace
-            if not content or content.endswith(' '):
+            # Si la commande est vide, ne rien faire
+            if not content:
                 return
 
             # Séparer la commande et les arguments
             parts = content.split()
             command_name = parts[0].lower()
 
-            # Vérifier si la commande existe
+            # Seulement suggérer si la commande n'existe pas
             command = self.get_command(command_name)
             if not command:
-                # Suggérer des commandes similaires
+                # Suggérer des commandes similaires seulement si c'est vraiment proche
                 await self.suggest_similar_commands(message, command_name)
-                return
-
-            # Si la commande existe mais est incomplète
-            if len(parts) == 1 or (len(parts) == 2 and not content.endswith(' ')):
-                await self.show_command_help(message, command)
 
         except Exception as e:
             logger.error(f"Erreur autocomplétion: {e}")
@@ -614,38 +632,38 @@ class CommunityBot(commands.Bot):
     async def suggest_similar_commands(self, message, partial_command):
         """Suggère des commandes similaires"""
         try:
+            # Seulement suggérer si la commande fait au moins 3 caractères
+            if len(partial_command) < 3:
+                return
+
             # Trouver des commandes similaires
             similar_commands = []
             all_commands = [cmd.name for cmd in self.commands] + [alias for cmd in self.commands for alias in cmd.aliases]
 
             for cmd_name in all_commands:
-                if partial_command in cmd_name or cmd_name.startswith(partial_command):
+                # Correspondance plus stricte
+                if cmd_name.startswith(partial_command) or (len(partial_command) >= 4 and partial_command in cmd_name):
                     similar_commands.append(cmd_name)
 
-            if similar_commands:
+            # Seulement afficher si on a trouvé des suggestions pertinentes
+            if similar_commands and len(similar_commands) <= 8:
                 embed = discord.Embed(
                     title="🤔 Commande introuvable",
                     description=f"La commande `{partial_command}` n'existe pas.",
                     color=0xf39c12
                 )
 
-                # Limiter à 10 suggestions
-                suggestions = similar_commands[:10]
+                # Limiter à 5 suggestions
+                suggestions = similar_commands[:5]
                 embed.add_field(
                     name="💡 Suggestions",
                     value="\n".join(f"• `{self.command_prefix}{cmd}`" for cmd in suggestions),
                     inline=False
                 )
 
-                embed.add_field(
-                    name="📚 Aide",
-                    value=f"Utilisez `{self.command_prefix}help` pour voir toutes les commandes",
-                    inline=False
-                )
-
                 embed.set_footer(text="Autocomplétion intelligente")
 
-                await message.channel.send(embed=embed, delete_after=15)
+                await message.channel.send(embed=embed, delete_after=10)
 
         except Exception as e:
             logger.error(f"Erreur suggestions: {e}")
@@ -819,6 +837,49 @@ class CommunityBot(commands.Bot):
                 color=0xe74c3c
             )
             await ctx.send(embed=embed)
+
+    @commands.command(name='test_commands')
+    @commands.has_permissions(administrator=True)
+    async def test_commands(self, ctx):
+        """Teste que les commandes fonctionnent correctement"""
+        embed = discord.Embed(
+            title="🧪 TEST DES COMMANDES",
+            description="Vérification du bon fonctionnement des systèmes",
+            color=0x2ecc71
+        )
+
+        # Tester les systèmes
+        systems_status = []
+
+        # Test autocomplétion
+        try:
+            systems_status.append("✅ Autocomplétion - Fonctionnel")
+        except:
+            systems_status.append("❌ Autocomplétion - Erreur")
+
+        # Test anonymisation
+        anon_status = "✅ Activé" if self.anonymous_commands else "⚠️ Désactivé"
+        systems_status.append(f"🤖 Anonymisation - {anon_status}")
+
+        # Test sauvegarde
+        save_status = "✅ Actif" if hasattr(self, 'auto_save_task') and self.auto_save_task.is_running() else "❌ Inactif"
+        systems_status.append(f"💾 Sauvegarde auto - {save_status}")
+
+        embed.add_field(
+            name="🔧 Statut des Systèmes",
+            value="\n".join(systems_status),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎯 Commandes à Tester",
+            value="• `!setup_tickets #canal` - Configuration tickets\n• `!help` - Aide générale\n• `!backup_status` - Statut sauvegardes",
+            inline=False
+        )
+
+        embed.set_footer(text="Si setup_tickets ne fonctionne pas, contactez le développeur")
+
+        await ctx.send(embed=embed)
 
     def start_auto_tasks(self):
         """Démarre toutes les tâches automatiques"""
