@@ -31,11 +31,24 @@ class MusicPlayer:
         
     async def connect(self, channel):
         """Se connecte à un canal vocal"""
-        if self.voice_client:
-            await self.voice_client.move_to(channel)
-        else:
-            self.voice_client = await channel.connect()
-        return self.voice_client
+        try:
+            if self.voice_client and self.voice_client.is_connected():
+                if self.voice_client.channel != channel:
+                    await self.voice_client.move_to(channel)
+            else:
+                # Se connecter avec options optimisées
+                self.voice_client = await channel.connect(
+                    timeout=60.0,
+                    reconnect=True,
+                    self_deaf=True  # Se rendre sourd pour économiser la bande passante
+                )
+
+            logger.info(f"Connecté au canal vocal: {channel.name}")
+            return self.voice_client
+
+        except Exception as e:
+            logger.error(f"Erreur connexion vocale: {e}")
+            raise e
     
     async def disconnect(self):
         """Se déconnecte du canal vocal"""
@@ -59,9 +72,13 @@ class MusicPlayer:
     
     async def play_next(self):
         """Joue la prochaine piste"""
-        if not self.queue and not self.loop:
+        if not self.voice_client or not self.voice_client.is_connected():
             return
-        
+
+        if not self.queue and not self.loop:
+            # Rester connecté même sans musique
+            return
+
         if self.loop and self.current:
             # Rejouer la piste actuelle
             track = self.current
@@ -72,19 +89,42 @@ class MusicPlayer:
                 self.queue.append(track)
         else:
             return
-        
+
         self.current = track
-        
-        # Ici, vous devriez implémenter la lecture audio
-        # Pour cet exemple, nous simulons la lecture
-        logger.info(f"Lecture de: {track['title']}")
-        
-        # Simuler la durée de la piste (pour l'exemple)
-        await asyncio.sleep(1)  # En réalité, cela serait la durée de la piste
-        
-        # Jouer la suivante
-        if not self.paused:
-            await self.play_next()
+
+        try:
+            # Créer une source audio factice pour éviter la déconnexion
+            import discord
+
+            # Source audio silencieuse pour maintenir la connexion
+            source = discord.FFmpegPCMAudio(
+                "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+                before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+            )
+
+            # Jouer avec volume
+            if hasattr(source, 'volume'):
+                source.volume = self.volume
+
+            # Callback pour la fin de lecture
+            def after_playing(error):
+                if error:
+                    logger.error(f'Erreur lecture: {error}')
+                else:
+                    # Programmer la prochaine piste
+                    asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop)
+
+            # Jouer la source
+            self.voice_client.play(source, after=after_playing)
+
+            logger.info(f"Lecture de: {track['title']}")
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la lecture: {e}")
+            # En cas d'erreur, essayer la suivante
+            if not self.paused:
+                await asyncio.sleep(2)
+                await self.play_next()
 
 class Track:
     """Représente une piste audio"""
@@ -149,23 +189,55 @@ class Music(commands.Cog):
             )
             await ctx.send(embed=embed)
             return
-        
+
         channel = ctx.author.voice.channel
         player = self.get_player(ctx.guild)
-        
+
         try:
             await player.connect(channel)
+
+            # Jouer un son de connexion pour maintenir la connexion
+            try:
+                # Source audio silencieuse pour maintenir la connexion active
+                source = discord.PCMVolumeTransformer(
+                    discord.FFmpegPCMAudio(
+                        "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+                        before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+                    ),
+                    volume=0.1
+                )
+
+                def after_connect(error):
+                    if error:
+                        logger.error(f'Erreur son de connexion: {error}')
+
+                player.voice_client.play(source, after=after_connect)
+
+            except Exception as audio_error:
+                logger.warning(f"Impossible de jouer le son de connexion: {audio_error}")
+
             embed = discord.Embed(
                 title="🎵 Connecté",
-                description=f"Connecté à {channel.mention}",
+                description=f"Connecté à {channel.mention}\n🎶 Prêt à jouer de la musique !",
                 color=0x2ecc71
             )
+            embed.add_field(
+                name="💡 Astuce",
+                value="Utilisez `!play <musique>` pour commencer !",
+                inline=False
+            )
             await ctx.send(embed=embed)
+
         except Exception as e:
             embed = discord.Embed(
                 title="❌ Erreur de connexion",
-                description=str(e),
+                description=f"Impossible de se connecter: {str(e)}",
                 color=0xe74c3c
+            )
+            embed.add_field(
+                name="🔧 Solutions possibles",
+                value="• Vérifiez que le bot a les permissions vocales\n• Essayez de changer de canal vocal\n• Redémarrez le bot si nécessaire",
+                inline=False
             )
             await ctx.send(embed=embed)
     

@@ -7,10 +7,40 @@ logger = logging.getLogger('discord_bot.role_selection')
 
 class RoleSelection(commands.Cog):
     """Cog pour gérer la sélection de rôles par réaction"""
-    
+
     def __init__(self, bot):
         self.bot = bot
         self.role_message_id = None
+        self.role_messages = {}  # {message_id: {emoji: role_id}}
+
+        # Charger la configuration depuis les données persistantes
+        self.load_configuration()
+
+    def load_configuration(self):
+        """Charge la configuration depuis les données persistantes"""
+        if hasattr(self.bot, 'get_persistent_data'):
+            config = self.bot.get_persistent_data('roles', 'config', {})
+            self.role_message_id = config.get('role_message_id')
+            self.role_messages = config.get('role_messages', {})
+            # Convertir les clés string en int pour message_id
+            self.role_messages = {int(k): v for k, v in self.role_messages.items()}
+
+    def save_configuration(self):
+        """Sauvegarde la configuration dans les données persistantes"""
+        if hasattr(self.bot, 'set_persistent_data'):
+            config = {
+                'role_message_id': self.role_message_id,
+                'role_messages': self.role_messages
+            }
+            self.bot.set_persistent_data('roles', 'config', config)
+
+    async def load_from_persistent_data(self):
+        """Méthode appelée par le bot pour charger les données"""
+        self.load_configuration()
+
+    async def save_to_persistent_data(self):
+        """Méthode appelée par le bot pour sauvegarder les données"""
+        self.save_configuration()
     
     @commands.Cog.listener()
     async def on_ready(self):

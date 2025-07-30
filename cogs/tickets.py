@@ -119,7 +119,13 @@ class CreateTicketView(discord.ui.View):
             color=0x2ecc71
         )
         await interaction.response.send_message(embed=embed_confirm, ephemeral=True)
-        
+
+        # Enregistrer le ticket actif
+        tickets_cog = bot.get_cog('Tickets')
+        if tickets_cog:
+            tickets_cog.active_tickets[user.id] = ticket_channel.id
+            tickets_cog.save_configuration()
+
         # Log la création du ticket
         logs_channel_id = bot.config['channels']['logs']
         if logs_channel_id:
@@ -139,9 +145,48 @@ class CreateTicketView(discord.ui.View):
 
 class Tickets(commands.Cog):
     """Cog pour gérer le système de tickets"""
-    
+
     def __init__(self, bot):
         self.bot = bot
+        self.active_tickets = {}  # {user_id: channel_id}
+
+        # Charger la configuration depuis les données persistantes
+        self.load_configuration()
+
+    def load_configuration(self):
+        """Charge la configuration depuis les données persistantes"""
+        if hasattr(self.bot, 'get_persistent_data'):
+            config = self.bot.get_persistent_data('tickets', 'config', {})
+            self.active_tickets = config.get('active_tickets', {})
+            # Convertir les clés string en int pour active_tickets
+            self.active_tickets = {int(k): v for k, v in self.active_tickets.items()}
+
+    def save_configuration(self):
+        """Sauvegarde la configuration dans les données persistantes"""
+        if hasattr(self.bot, 'set_persistent_data'):
+            config = {
+                'active_tickets': self.active_tickets
+            }
+            self.bot.set_persistent_data('tickets', 'config', config)
+
+    async def load_from_persistent_data(self):
+        """Méthode appelée par le bot pour charger les données"""
+        self.load_configuration()
+
+        # Restaurer les vues des boutons si nécessaire
+        ticket_channel_id = self.bot.config['channels'].get('tickets')
+        if ticket_channel_id:
+            for guild in self.bot.guilds:
+                channel = guild.get_channel(ticket_channel_id)
+                if channel:
+                    # Ajouter la vue persistante pour les boutons
+                    view = CreateTicketView()
+                    self.bot.add_view(view)
+                    break
+
+    async def save_to_persistent_data(self):
+        """Méthode appelée par le bot pour sauvegarder les données"""
+        self.save_configuration()
     
     @commands.command(name='ticket')
     @commands.cooldown(1, 30, commands.BucketType.user)
@@ -187,12 +232,25 @@ class Tickets(commands.Cog):
         embed.set_footer(text="Un canal privé sera créé pour vous.")
         
         view = CreateTicketView()
-        await channel.send(embed=embed, view=view)
-        
+        message = await channel.send(embed=embed, view=view)
+
+        # Sauvegarder la configuration
+        self.bot.config['channels']['tickets'] = channel.id
+        with open('config.json', 'w', encoding='utf-8') as f:
+            json.dump(self.bot.config, f, indent=2, ensure_ascii=False)
+
+        # Sauvegarder dans les données persistantes
+        self.save_configuration()
+
         embed_confirm = discord.Embed(
             title="✅ Configuration terminée",
             description=f"Le système de tickets a été configuré dans {channel.mention}",
             color=0x2ecc71
+        )
+        embed_confirm.add_field(
+            name="💾 Persistance",
+            value="✅ Configuration sauvegardée automatiquement",
+            inline=False
         )
         await ctx.send(embed=embed_confirm)
         logger.info(f"Système de tickets configuré dans {channel.name}")

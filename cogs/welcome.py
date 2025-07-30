@@ -6,9 +6,37 @@ logger = logging.getLogger('discord_bot.welcome')
 
 class Welcome(commands.Cog):
     """Cog pour gérer les messages de bienvenue"""
-    
+
     def __init__(self, bot):
         self.bot = bot
+
+        # Charger la configuration depuis les données persistantes
+        self.load_configuration()
+
+    def load_configuration(self):
+        """Charge la configuration depuis les données persistantes"""
+        if hasattr(self.bot, 'get_persistent_data'):
+            config = self.bot.get_persistent_data('welcome', 'config', {})
+            # La configuration est déjà dans bot.config, mais on peut ajouter des données spécifiques ici
+
+    def save_configuration(self):
+        """Sauvegarde la configuration dans les données persistantes"""
+        if hasattr(self.bot, 'set_persistent_data'):
+            config = {
+                'welcome_channel': self.bot.config['channels'].get('welcome'),
+                'goodbye_channel': self.bot.config['channels'].get('goodbye'),
+                'welcome_message': self.bot.config.get('welcome_message'),
+                'goodbye_message': self.bot.config.get('goodbye_message')
+            }
+            self.bot.set_persistent_data('welcome', 'config', config)
+
+    async def load_from_persistent_data(self):
+        """Méthode appelée par le bot pour charger les données"""
+        self.load_configuration()
+
+    async def save_to_persistent_data(self):
+        """Méthode appelée par le bot pour sauvegarder les données"""
+        self.save_configuration()
     
     @commands.Cog.listener()
     async def on_member_join(self, member):
