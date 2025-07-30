@@ -1,9 +1,11 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import json
 import logging
 import os
 import asyncio
+from datetime import datetime, time
+import shutil
 from dotenv import load_dotenv
 
 # Chargement des variables d'environnement
@@ -76,8 +78,19 @@ class CommunityBot(commands.Bot):
             'music': {},
             'logs': {},
             'giveaways': {},
-            'suggestions': {}
+            'suggestions': {},
+            'system': {}
         }
+
+        # Configuration du système d'anonymisation
+        self.anonymous_commands = True  # Activé par défaut
+
+        # Système de sauvegarde automatique
+        self.auto_save_enabled = True
+        self.last_auto_save = None
+        self.auto_save_interval = 3600  # 1 heure en secondes
+        self.daily_backup_enabled = True
+        self.backup_retention_days = 7  # Garder 7 jours de sauvegardes
 
         # Charger les données sauvegardées
         self.load_persistent_data()
@@ -215,6 +228,9 @@ class CommunityBot(commands.Bot):
         """Appelé quand le bot est prêt"""
         logger.info(f'{self.user} est connecté et prêt !')
         logger.info(f'Connecté à {len(self.guilds)} serveur(s)')
+
+        # Démarrer les tâches automatiques
+        self.start_auto_tasks()
 
         # Définir le statut du bot
         activity = discord.Activity(
@@ -438,7 +454,334 @@ class CommunityBot(commands.Bot):
         embed.set_footer(text="Les données sont sauvegardées automatiquement à chaque modification")
 
         await ctx.send(embed=embed)
-    
+
+    async def on_command(self, ctx):
+        """Appelé avant chaque commande - Système d'anonymisation"""
+        logger.info(f"Commande '{ctx.command}' utilisée par {ctx.author.name} dans {ctx.guild.name if ctx.guild else 'DM'}")
+
+        # SYSTÈME D'ANONYMISATION DES COMMANDES
+        await self.anonymize_command(ctx)
+
+    async def anonymize_command(self, ctx):
+        """Anonymise les commandes pour qu'elles apparaissent comme venant du bot"""
+        # Vérifier si l'anonymisation est activée
+        if not self.anonymous_commands:
+            return
+
+        # Ne pas anonymiser les commandes de configuration du système
+        if ctx.command and ctx.command.name in ['anonymous', 'toggle_anonymous']:
+            return
+
+        try:
+            # Supprimer le message de commande original
+            if ctx.guild and ctx.channel.permissions_for(ctx.guild.me).manage_messages:
+                try:
+                    await ctx.message.delete()
+                except discord.NotFound:
+                    pass  # Message déjà supprimé
+                except discord.Forbidden:
+                    pass  # Pas les permissions
+
+            # Créer un webhook pour simuler que c'est le bot qui parle
+            webhook = await self.get_or_create_webhook(ctx.channel)
+            if webhook:
+                # Envoyer un message comme si c'était le bot
+                embed = discord.Embed(
+                    title="🤖 Commande Exécutée",
+                    description=f"Commande `{ctx.prefix}{ctx.invoked_with}` en cours d'exécution...",
+                    color=0x3498db
+                )
+                embed.add_field(
+                    name="🔒 Mode Anonyme",
+                    value="Cette commande est exécutée de manière anonyme pour la sécurité",
+                    inline=False
+                )
+                embed.set_footer(text="Système de commandes anonymes • Sécurité maximale")
+
+                await webhook.send(
+                    embed=embed,
+                    username=f"{self.user.name} • Système",
+                    avatar_url=self.user.display_avatar.url
+                )
+
+        except Exception as e:
+            logger.error(f"Erreur anonymisation commande: {e}")
+
+    @commands.command(name='anonymous', aliases=['toggle_anonymous'])
+    @commands.has_permissions(administrator=True)
+    async def toggle_anonymous_commands(self, ctx):
+        """Active/désactive le système de commandes anonymes"""
+        self.anonymous_commands = not self.anonymous_commands
+
+        # Sauvegarder la configuration
+        self.set_persistent_data('system', 'anonymous_commands', self.anonymous_commands)
+
+        status = "activé" if self.anonymous_commands else "désactivé"
+        color = 0x2ecc71 if self.anonymous_commands else 0xe74c3c
+
+        embed = discord.Embed(
+            title=f"🤖 Système de Commandes Anonymes {status.title()}",
+            description=f"Le système de commandes anonymes a été **{status}**.",
+            color=color
+        )
+
+        if self.anonymous_commands:
+            embed.add_field(
+                name="✅ Fonctionnalités Activées",
+                value="• Suppression automatique des commandes\n• Messages via webhook du bot\n• Anonymisation complète\n• Sécurité maximale",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="❌ Fonctionnalités Désactivées",
+                value="• Les commandes apparaîtront normalement\n• Pas de suppression automatique\n• Mode standard",
+                inline=False
+            )
+
+        embed.add_field(
+            name="🔧 Configuration",
+            value=f"Utilisez `{ctx.prefix}anonymous` pour changer ce paramètre",
+            inline=False
+        )
+
+        await ctx.send(embed=embed)
+
+    async def get_or_create_webhook(self, channel):
+        """Récupère ou crée un webhook pour le canal"""
+        try:
+            # Vérifier si un webhook existe déjà
+            webhooks = await channel.webhooks()
+            bot_webhook = None
+
+            for webhook in webhooks:
+                if webhook.name == f"{self.user.name}-Anonymous":
+                    bot_webhook = webhook
+                    break
+
+            # Créer un nouveau webhook si nécessaire
+            if not bot_webhook:
+                bot_webhook = await channel.create_webhook(
+                    name=f"{self.user.name}-Anonymous",
+                    reason="Webhook pour commandes anonymes"
+                )
+
+            return bot_webhook
+
+        except discord.Forbidden:
+            logger.warning(f"Pas de permissions pour créer webhook dans {channel.name}")
+            return None
+        except Exception as e:
+            logger.error(f"Erreur création webhook: {e}")
+            return None
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        """Système d'autocomplétion intelligent pour les commandes"""
+        if message.author.bot:
+            return
+
+        # Vérifier si c'est une commande incomplète
+        if message.content.startswith(self.command_prefix):
+            await self.handle_autocomplete(message)
+
+    async def handle_autocomplete(self, message):
+        """Gère l'autocomplétion des commandes"""
+        try:
+            content = message.content[len(self.command_prefix):].strip()
+
+            # Si la commande est vide ou juste un espace
+            if not content or content.endswith(' '):
+                return
+
+            # Séparer la commande et les arguments
+            parts = content.split()
+            command_name = parts[0].lower()
+
+            # Vérifier si la commande existe
+            command = self.get_command(command_name)
+            if not command:
+                # Suggérer des commandes similaires
+                await self.suggest_similar_commands(message, command_name)
+                return
+
+            # Si la commande existe mais est incomplète
+            if len(parts) == 1 or (len(parts) == 2 and not content.endswith(' ')):
+                await self.show_command_help(message, command)
+
+        except Exception as e:
+            logger.error(f"Erreur autocomplétion: {e}")
+
+    async def suggest_similar_commands(self, message, partial_command):
+        """Suggère des commandes similaires"""
+        try:
+            # Trouver des commandes similaires
+            similar_commands = []
+            all_commands = [cmd.name for cmd in self.commands] + [alias for cmd in self.commands for alias in cmd.aliases]
+
+            for cmd_name in all_commands:
+                if partial_command in cmd_name or cmd_name.startswith(partial_command):
+                    similar_commands.append(cmd_name)
+
+            if similar_commands:
+                embed = discord.Embed(
+                    title="🤔 Commande introuvable",
+                    description=f"La commande `{partial_command}` n'existe pas.",
+                    color=0xf39c12
+                )
+
+                # Limiter à 10 suggestions
+                suggestions = similar_commands[:10]
+                embed.add_field(
+                    name="💡 Suggestions",
+                    value="\n".join(f"• `{self.command_prefix}{cmd}`" for cmd in suggestions),
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="📚 Aide",
+                    value=f"Utilisez `{self.command_prefix}help` pour voir toutes les commandes",
+                    inline=False
+                )
+
+                embed.set_footer(text="Autocomplétion intelligente")
+
+                await message.channel.send(embed=embed, delete_after=15)
+
+        except Exception as e:
+            logger.error(f"Erreur suggestions: {e}")
+
+    async def show_command_help(self, message, command):
+        """Affiche l'aide détaillée pour une commande"""
+        try:
+            embed = discord.Embed(
+                title=f"📋 Aide pour `{self.command_prefix}{command.name}`",
+                description=command.help or "Aucune description disponible",
+                color=0x3498db
+            )
+
+            # Signature de la commande
+            signature = self.get_command_signature(command)
+            embed.add_field(
+                name="📝 Utilisation",
+                value=f"`{signature}`",
+                inline=False
+            )
+
+            # Exemples spécifiques selon la commande
+            examples = self.get_command_examples(command)
+            if examples:
+                embed.add_field(
+                    name="💡 Exemples",
+                    value=examples,
+                    inline=False
+                )
+
+            # Autocomplétion pour les arguments
+            autocomplete_help = await self.get_autocomplete_help(message, command)
+            if autocomplete_help:
+                embed.add_field(
+                    name="🎯 Autocomplétion",
+                    value=autocomplete_help,
+                    inline=False
+                )
+
+            # Aliases
+            if command.aliases:
+                embed.add_field(
+                    name="🔄 Aliases",
+                    value=", ".join(f"`{alias}`" for alias in command.aliases),
+                    inline=False
+                )
+
+            embed.set_footer(text="Autocomplétion intelligente • Tapez pour continuer")
+
+            await message.channel.send(embed=embed, delete_after=30)
+
+        except Exception as e:
+            logger.error(f"Erreur aide commande: {e}")
+
+    def get_command_signature(self, command):
+        """Génère la signature d'une commande"""
+        signature = f"{self.command_prefix}{command.qualified_name}"
+
+        if command.signature:
+            signature += f" {command.signature}"
+
+        return signature
+
+    def get_command_examples(self, command):
+        """Génère des exemples pour une commande"""
+        examples = {
+            'ban': f"`{self.command_prefix}ban @utilisateur Spam répété`\n`{self.command_prefix}ban 123456789 Comportement toxique`",
+            'kick': f"`{self.command_prefix}kick @utilisateur Avertissement`\n`{self.command_prefix}kick @user Violation des règles`",
+            'mute': f"`{self.command_prefix}mute @utilisateur 10m Spam`\n`{self.command_prefix}mute @user 1h Comportement inapproprié`",
+            'warn': f"`{self.command_prefix}warn @utilisateur Langage inapproprié`\n`{self.command_prefix}warn @user Hors-sujet répété`",
+            'superban': f"`{self.command_prefix}superban @utilisateur Raid/Alt account`\n`{self.command_prefix}ipban @user Contournement de ban`",
+            'play': f"`{self.command_prefix}play Imagine Dragons`\n`{self.command_prefix}play https://youtube.com/watch?v=...`",
+            'giveaway': f"`{self.command_prefix}giveaway 1h 1 Nitro Discord`\n`{self.command_prefix}giveaway 2d 3 100€ Steam`",
+            'suggest': f"`{self.command_prefix}suggest Ajouter un salon gaming`\n`{self.command_prefix}suggest Organiser des événements`",
+            'setup_tickets': f"`{self.command_prefix}setup_tickets #support`\n`{self.command_prefix}setup_tickets #aide`",
+            'welcome_setup': f"`{self.command_prefix}welcome_setup #bienvenue`\n`{self.command_prefix}welcome_setup #général`",
+            'antiraid': f"`{self.command_prefix}antiraid setup`\n`{self.command_prefix}antiraid status`",
+            'automod': f"`{self.command_prefix}automod setup`\n`{self.command_prefix}automod filters`"
+        }
+
+        return examples.get(command.name, None)
+
+    async def get_autocomplete_help(self, message, command):
+        """Génère l'aide d'autocomplétion pour une commande"""
+        try:
+            help_text = ""
+
+            # Commandes nécessitant un utilisateur
+            if command.name in ['ban', 'kick', 'mute', 'warn', 'superban', 'unban']:
+                # Lister les membres du serveur
+                if message.guild:
+                    members = [member for member in message.guild.members if not member.bot][:10]
+                    if members:
+                        help_text += "👥 **Utilisateurs disponibles:**\n"
+                        for member in members:
+                            help_text += f"• `@{member.name}` ({member.display_name})\n"
+
+            # Commandes nécessitant un canal
+            elif command.name in ['setup_tickets', 'welcome_setup', 'logs']:
+                if message.guild:
+                    channels = [ch for ch in message.guild.text_channels][:10]
+                    if channels:
+                        help_text += "📍 **Canaux disponibles:**\n"
+                        for channel in channels:
+                            help_text += f"• `#{channel.name}`\n"
+
+            # Commandes nécessitant un rôle
+            elif command.name in ['add_role', 'remove_role']:
+                if message.guild:
+                    roles = [role for role in message.guild.roles if role != message.guild.default_role][:10]
+                    if roles:
+                        help_text += "🎭 **Rôles disponibles:**\n"
+                        for role in roles:
+                            help_text += f"• `@{role.name}`\n"
+
+            # Commandes avec options spécifiques
+            elif command.name == 'giveaway':
+                help_text += "⏰ **Durées:** `1m`, `30m`, `1h`, `2h`, `1d`, `1w`\n"
+                help_text += "🏆 **Gagnants:** `1`, `2`, `3`, `5`, `10`\n"
+                help_text += "🎁 **Prix:** `Nitro Discord`, `100€ Steam`, `Rôle VIP`"
+
+            elif command.name == 'mute':
+                help_text += "⏰ **Durées:** `5m`, `10m`, `30m`, `1h`, `2h`, `1d`"
+
+            elif command.name == 'volume':
+                help_text += "🔊 **Volume:** `0` (muet) à `100` (maximum)"
+
+            elif command.name == 'effects':
+                help_text += "🎵 **Effets:** `bass`, `nightcore`, `vaporwave`, `clear`"
+
+            return help_text if help_text else None
+
+        except Exception as e:
+            logger.error(f"Erreur autocomplétion help: {e}")
+            return None
+
     async def on_command_error(self, ctx, error):
         """Gestion globale des erreurs"""
         if isinstance(error, commands.CommandNotFound):
@@ -476,6 +819,228 @@ class CommunityBot(commands.Bot):
                 color=0xe74c3c
             )
             await ctx.send(embed=embed)
+
+    def start_auto_tasks(self):
+        """Démarre toutes les tâches automatiques"""
+        try:
+            # Démarrer la sauvegarde automatique
+            self.auto_save_task.start()
+            logger.info("✅ Tâche de sauvegarde automatique démarrée")
+
+            # Démarrer la sauvegarde quotidienne
+            self.daily_backup_task.start()
+            logger.info("✅ Tâche de sauvegarde quotidienne démarrée")
+
+            # Démarrer le nettoyage des anciennes sauvegardes
+            self.cleanup_old_backups_task.start()
+            logger.info("✅ Tâche de nettoyage des sauvegardes démarrée")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur démarrage tâches automatiques: {e}")
+
+    @tasks.loop(seconds=3600)  # Toutes les heures
+    async def auto_save_task(self):
+        """Sauvegarde automatique toutes les heures"""
+        try:
+            logger.info("🔄 Début de la sauvegarde automatique...")
+
+            # Sauvegarder toutes les données
+            self.save_persistent_data()
+            self.save_warnings()
+            self.save_muted_users()
+
+            # Sauvegarder les cogs
+            saved_cogs = []
+            for cog_name, cog in self.cogs.items():
+                if hasattr(cog, 'save_configuration'):
+                    try:
+                        cog.save_configuration()
+                        saved_cogs.append(cog_name)
+                    except Exception as e:
+                        logger.error(f"Erreur sauvegarde {cog_name}: {e}")
+
+            self.last_auto_save = datetime.now()
+            logger.info(f"✅ Sauvegarde automatique terminée - {len(saved_cogs)} cogs sauvegardés")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde automatique: {e}")
+
+    @tasks.loop(time=time(hour=3, minute=0))  # Tous les jours à 3h du matin
+    async def daily_backup_task(self):
+        """Sauvegarde quotidienne avec archivage"""
+        try:
+            logger.info("🌙 Début de la sauvegarde quotidienne...")
+
+            # Créer le dossier de sauvegardes s'il n'existe pas
+            backup_dir = "backups"
+            if not os.path.exists(backup_dir):
+                os.makedirs(backup_dir)
+
+            # Nom du fichier de sauvegarde avec date
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            backup_name = f"backup_{timestamp}"
+            backup_path = os.path.join(backup_dir, backup_name)
+
+            # Créer le dossier de cette sauvegarde
+            os.makedirs(backup_path, exist_ok=True)
+
+            # Sauvegarder tous les fichiers de données
+            files_to_backup = [
+                'persistent_data.json',
+                'warnings.json',
+                'muted_users.json',
+                'config.json'
+            ]
+
+            backed_up_files = []
+            for file in files_to_backup:
+                if os.path.exists(file):
+                    try:
+                        shutil.copy2(file, os.path.join(backup_path, file))
+                        backed_up_files.append(file)
+                    except Exception as e:
+                        logger.error(f"Erreur copie {file}: {e}")
+
+            # Créer un fichier de métadonnées
+            metadata = {
+                'backup_date': timestamp,
+                'files_backed_up': backed_up_files,
+                'bot_version': '2.0',
+                'guilds_count': len(self.guilds),
+                'users_count': len(self.users)
+            }
+
+            with open(os.path.join(backup_path, 'metadata.json'), 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"✅ Sauvegarde quotidienne terminée - {len(backed_up_files)} fichiers sauvegardés dans {backup_path}")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur sauvegarde quotidienne: {e}")
+
+    @tasks.loop(time=time(hour=4, minute=0))  # Tous les jours à 4h du matin
+    async def cleanup_old_backups_task(self):
+        """Nettoie les anciennes sauvegardes"""
+        try:
+            from datetime import timedelta
+
+            logger.info("🧹 Début du nettoyage des anciennes sauvegardes...")
+
+            backup_dir = "backups"
+            if not os.path.exists(backup_dir):
+                return
+
+            # Date limite (garder seulement les X derniers jours)
+            cutoff_date = datetime.now() - timedelta(days=self.backup_retention_days)
+
+            deleted_backups = []
+            for item in os.listdir(backup_dir):
+                item_path = os.path.join(backup_dir, item)
+                if os.path.isdir(item_path) and item.startswith('backup_'):
+                    try:
+                        # Extraire la date du nom du dossier
+                        date_str = item.replace('backup_', '').split('_')[0]
+                        backup_date = datetime.strptime(date_str, '%Y-%m-%d')
+
+                        # Supprimer si trop ancien
+                        if backup_date < cutoff_date:
+                            shutil.rmtree(item_path)
+                            deleted_backups.append(item)
+
+                    except Exception as e:
+                        logger.error(f"Erreur traitement backup {item}: {e}")
+
+            logger.info(f"✅ Nettoyage terminé - {len(deleted_backups)} anciennes sauvegardes supprimées")
+
+        except Exception as e:
+            logger.error(f"❌ Erreur nettoyage sauvegardes: {e}")
+
+    @auto_save_task.before_loop
+    async def before_auto_save(self):
+        """Attendre que le bot soit prêt avant de commencer les sauvegardes"""
+        await self.wait_until_ready()
+
+    @daily_backup_task.before_loop
+    async def before_daily_backup(self):
+        """Attendre que le bot soit prêt avant de commencer les sauvegardes quotidiennes"""
+        await self.wait_until_ready()
+
+    @cleanup_old_backups_task.before_loop
+    async def before_cleanup(self):
+        """Attendre que le bot soit prêt avant de commencer le nettoyage"""
+        await self.wait_until_ready()
+
+    @commands.command(name='backup_status')
+    @commands.has_permissions(administrator=True)
+    async def backup_status(self, ctx):
+        """Affiche le statut des sauvegardes automatiques"""
+        embed = discord.Embed(
+            title="💾 STATUT DES SAUVEGARDES AUTOMATIQUES",
+            description="État du système de sauvegarde ultra-avancé",
+            color=0x2ecc71
+        )
+
+        # Statut des tâches
+        auto_save_status = "✅ Actif" if self.auto_save_task.is_running() else "❌ Inactif"
+        daily_backup_status = "✅ Actif" if self.daily_backup_task.is_running() else "❌ Inactif"
+        cleanup_status = "✅ Actif" if self.cleanup_old_backups_task.is_running() else "❌ Inactif"
+
+        embed.add_field(
+            name="🔄 Sauvegarde Automatique (Toutes les heures)",
+            value=auto_save_status,
+            inline=True
+        )
+
+        embed.add_field(
+            name="🌙 Sauvegarde Quotidienne (3h du matin)",
+            value=daily_backup_status,
+            inline=True
+        )
+
+        embed.add_field(
+            name="🧹 Nettoyage Automatique (4h du matin)",
+            value=cleanup_status,
+            inline=True
+        )
+
+        # Dernière sauvegarde
+        if self.last_auto_save:
+            last_save = self.last_auto_save.strftime("%d/%m/%Y à %H:%M:%S")
+        else:
+            last_save = "Jamais"
+
+        embed.add_field(
+            name="⏰ Dernière Sauvegarde Automatique",
+            value=last_save,
+            inline=False
+        )
+
+        # Compter les sauvegardes
+        backup_count = 0
+        if os.path.exists("backups"):
+            backup_count = len([d for d in os.listdir("backups") if d.startswith('backup_')])
+
+        embed.add_field(
+            name="📁 Sauvegardes Disponibles",
+            value=f"{backup_count} sauvegardes quotidiennes",
+            inline=True
+        )
+
+        embed.add_field(
+            name="🗑️ Rétention",
+            value=f"{self.backup_retention_days} jours",
+            inline=True
+        )
+
+        embed.add_field(
+            name="🎯 Avantages",
+            value="• **Aucune perte de données** possible\n• **Sauvegardes automatiques** 24/7\n• **Archivage quotidien** sécurisé\n• **Nettoyage automatique** des anciennes versions",
+            inline=False
+        )
+
+        embed.set_footer(text="Système de sauvegarde automatique • Zéro intervention manuelle")
+
+        await ctx.send(embed=embed)
 
 async def main():
     """Fonction principale"""
