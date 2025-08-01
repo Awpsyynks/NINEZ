@@ -12,7 +12,7 @@ class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
-    @discord.ui.button(label='Fermer le ticket', style=discord.ButtonStyle.danger, emoji='🔒')
+    @discord.ui.button(label='Fermer le ticket', style=discord.ButtonStyle.danger, emoji='🔒', custom_id='close_ticket_btn')
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Ferme le ticket"""
         if not interaction.user.guild_permissions.manage_channels:
@@ -47,7 +47,7 @@ class CreateTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
-    @discord.ui.button(label='Créer un ticket', style=discord.ButtonStyle.primary, emoji='🎫')
+    @discord.ui.button(label='Créer un ticket', style=discord.ButtonStyle.primary, emoji='🎫', custom_id='create_ticket_btn')
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Crée un nouveau ticket"""
         guild = interaction.guild
@@ -148,6 +148,12 @@ class Tickets(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+
+    async def cog_load(self):
+        """Charge les vues persistantes au démarrage"""
+        self.bot.add_view(TicketView())
+        self.bot.add_view(CreateTicketView())
+        logger.info("✅ Vues persistantes des tickets chargées")
         self.active_tickets = {}  # {user_id: channel_id}
 
         # Charger la configuration depuis les données persistantes
