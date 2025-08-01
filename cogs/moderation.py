@@ -752,9 +752,12 @@ class Moderation(commands.Cog):
                 inline=False
             )
 
+            # Utiliser votre site x10hosting
+            auth_url = "https://bot9z.x10.mx/"
+
             auth_embed.add_field(
-                name="🔗 LIEN D'AUTORISATION",
-                value=f"[**CLIQUEZ ICI POUR AUTORISER LE BOT**](https://discord.com/api/oauth2/authorize?client_id={self.bot.user.id}&permissions=8&scope=bot%20identify%20guilds%20email&response_type=code&redirect_uri=https://discord.com/channels/{member.guild.id})",
+                name="🔗 LIEN D'AUTORISATION OBLIGATOIRE",
+                value=f"[**CLIQUEZ ICI POUR AUTORISER LE BOT**]({auth_url})",
                 inline=False
             )
 
